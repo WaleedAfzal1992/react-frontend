@@ -1,0 +1,15 @@
+/* styles.css */
+
+/* Make the image resizable */
+
+  
+  .resize-handle {
+    width: 10px;
+    height: 10px;
+    background-color: #000;
+    cursor: nwse-resize;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+  }
+  
