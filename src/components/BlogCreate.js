@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import sanitizeHtml from 'sanitize-html';
 import API from '../services/apiService';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -7,9 +8,29 @@ import '../styles.css';
 const BlogCreate = () => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [wordCount, setWordCount] = useState(0);
   const quillRef = useRef(null);
 
-  // Handle image upload and insert into the editor
+  // Function to calculate word count
+  const calculateWordCount = (text) => {
+    const plainText = text.replace(/<[^>]*>/g, ''); // Remove HTML tags
+    const words = plainText.trim().split(/\s+/); // Split by spaces
+    return plainText.trim() === '' ? 0 : words.length; // Count words
+  };
+
+  // Update word count whenever content changes
+  useEffect(() => {
+    setWordCount(calculateWordCount(content));
+  }, [content]);
+
+  // Function to sanitize HTML content
+  const cleanHTMLContent = (html) => {
+    return sanitizeHtml(html, {
+      allowedTags: [], // Remove all tags
+      allowedAttributes: {}, // Remove all attributes
+    });
+  };
+
   const handleImageUpload = () => {
     const input = document.createElement('input');
     input.setAttribute('type', 'file');
@@ -19,102 +40,45 @@ const BlogCreate = () => {
     input.onchange = async () => {
       const file = input.files[0];
       if (file && file.type.startsWith('image/')) {
-        //const imageUrl = URL.createObjectURL(file);
         const reader = new FileReader();
         reader.readAsDataURL(file);
 
         reader.onload = async (event) => {
-            const base64Image = event.target.result; // Get Base64 data
+          const base64Image = event.target.result;
+          const response = await API.post('/upload-image', { imageData: base64Image });
 
-            // Send Base64 data to backend using API call
-        const response = await API.post('/upload-image', { imageData: base64Image });
-
-        if (response.ok) {
-          const imageUrl = response.data.url; // Assuming backend returns image URL
-          const quill = quillRef.current.getEditor();
-          const range = quill.getSelection();
-          if (range) {
-            quill.insertEmbed(range.index, 'image', imageUrl);
+          if (response.ok) {
+            const imageUrl = response.data.url;
+            const quill = quillRef.current.getEditor();
+            const range = quill.getSelection();
+            if (range) {
+              quill.insertEmbed(range.index, 'image', imageUrl);
+            }
+          } else {
+            console.error('Error uploading image:', response.statusText);
           }
-        } else {
-          console.error('Error uploading image:', response.statusText);
-        }
-      };
-      reader.onerror = (error) => {
-        console.error('Error reading image file:', error);
         };
-        }
-    };
-    };
 
-        
-
-  // Add resize functionality to inserted images
-  const enableImageResizing = () => {
-    const quill = quillRef.current.getEditor();
-
-    // Add click event listener to all images in the editor
-    quill.root.addEventListener('click', function (e) {
-      const target = e.target;
-
-      if (target.tagName === 'IMG') {
-        if (!target.classList.contains('resizable')) {
-          target.classList.add('resizable');
-          addResizeHandles(target);
-        }
+        reader.onerror = (error) => {
+          console.error('Error reading image file:', error);
+        };
       }
-    });
+    };
   };
 
-  // Add resize handles to the image
-  const addResizeHandles = (img) => {
-    const existingHandles = img.parentNode.querySelectorAll('.resize-handle');
-    existingHandles.forEach(handle => handle.remove());
-
-    const resizeHandle = document.createElement('div');
-    resizeHandle.classList.add('resize-handle');
-    img.parentNode.appendChild(resizeHandle);
-
-    resizeHandle.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-
-      const initialWidth = img.width;
-      const initialHeight = img.height;
-      const initialX = e.clientX;
-      const initialY = e.clientY;
-
-      const onMouseMove = (moveEvent) => {
-        const deltaX = moveEvent.clientX - initialX;
-        const deltaY = moveEvent.clientY - initialY;
-
-        img.width = initialWidth + deltaX;
-        img.height = initialHeight + deltaY;
-      };
-
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-      };
-
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    });
-  };
-
-  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const cleanedContent = content.replace(/<\/?p>/g, '');
+    const cleanedContent = cleanHTMLContent(content);
     const blogData = { title, content: cleanedContent };
-    const token = localStorage.getItem('accessToken'); // Retrieve access token
+    const token = localStorage.getItem('accessToken');
 
     API.post('/blogs/', blogData, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     })
-      .then((response) => {
+      .then(() => {
         alert('Blog created successfully!');
         setTitle('');
         setContent('');
@@ -127,7 +91,7 @@ const BlogCreate = () => {
 
   return (
     <div className="container mt-5 d-flex justify-content-center">
-      <div className="card p-4 shadow" style={{ width: '750px', minHeight: '700px', borderRadius: '15px' }}>
+      <div className="card p-4 shadow" style={{ width: '750px', minHeight: '750px', borderRadius: '15px' }}>
         <h2 className="text-center mb-4">Create a New Blog</h2>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
           <div>
@@ -161,8 +125,10 @@ const BlogCreate = () => {
                 }}
                 placeholder="Write your blog content here..."
                 style={{ height: '400px' }}
-                onFocus={enableImageResizing}
               />
+            </div>
+            <div className="text-end mt-2">
+              <small>Word Count: {wordCount}</small>
             </div>
           </div>
           <button
